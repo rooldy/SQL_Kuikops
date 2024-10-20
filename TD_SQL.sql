@@ -152,7 +152,7 @@ COMMIT;
 -- 2. Insérer les données dans les tables (en utilisant les scripts .sql)
 -- 2. Questions SQL :
 
--- 1. Affichez les commandes et les CD_EMAIL dont le montant d’achat est nettement
+-- Question 1. Affichez les commandes et les CD_EMAIL dont le montant d’achat est nettement
 -- supérieur à 80.00 euros.
 
 SELECT CD_COMMANDE, CD_EMAIL, MONTANT
@@ -160,7 +160,7 @@ FROM HR.TF_TRAIN_COMMANDE
 WHERE MONTANT > 80.00;
 
 
--- 2. Affichez les adresses mail avec les cd_commande dont la date de voyage est
+-- Question 2. Affichez les adresses mail avec les cd_commande dont la date de voyage est
 -- inférieure au 10/02/2020.
 
 SELECT 
@@ -174,7 +174,7 @@ ON TCOM.CD_EMAIL = TC.CD_EMAIL
 WHERE 
     TCOM.DATE_VOYAGE < TO_DATE('10/02/2020', 'DD/MM/YYYY');
 
--- 3. Calculez les doublons de cd_email de la table TF_TRAIN_COMMANDE.
+-- Question 3. Calculez les doublons de cd_email de la table TF_TRAIN_COMMANDE.
 
 SELECT 
     CD_EMAIL, 
@@ -187,7 +187,7 @@ HAVING
     COUNT(*) > 1;
 
 
--- 4. Affichez les cd_email qui ont effectué au moins deux commandes.
+-- Question 4. Affichez les cd_email qui ont effectué au moins deux commandes.
 
 SELECT
     CD_EMAIL
@@ -198,7 +198,7 @@ GROUP BY
 HAVING
     COUNT(*) > 1;
 
--- 5. Sélectionnez les noms et les adresses mail des voyageurs qui ont effectué le trajet
+-- Question 5. Sélectionnez les noms et les adresses mail des voyageurs qui ont effectué le trajet
 -- Lyon<=>Marseille. f. Affichez le descriptif de la carte le type des train des
 -- cd_commande de la tables tf_train_commande.
 
@@ -222,7 +222,7 @@ WHERE
     OR (TV.VILLE_ORIGINE = 'MARSEILLE' AND TV.VILLE_DESTINATAIRE = 'LYON');
 
 
--- 6. Sélectionnez les noms, prénoms, adresse mail et les types de carte des personnes
+-- Question 6. Sélectionnez les noms, prénoms, adresse mail et les types de carte des personnes
 -- qui ont effectué les deux trajets : PARIS<=>TOULOUSE et Bordeaux<=>PARIS.
 
 SELECT 
@@ -257,3 +257,861 @@ HAVING
              OR (TV.VILLE_ORIGINE = 'PARIS' AND TV.VILLE_DESTINATAIRE = 'BORDEAUX')
         THEN 'BORDEAUX-PARIS'
     END) = 2;
+
+-- Question 7: Trouvez les clients (nom et email) qui ont utilisé une carte de fidélité au moins trois fois.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    COUNT(TCOM.CD_COMMANDE) AS nb_commandes
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN 
+    HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+GROUP BY 
+    TC.NOM, 
+    TC.LBL_EMAIL
+HAVING 
+    COUNT(TCOM.CD_COMMANDE) >= 3;
+
+-- Question 8: Affichez les clients qui ont dépensé plus de 300 euros au total sur l'ensemble de leurs commandes.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    SUM(TCOM.MONTANT) AS montant_total
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY 
+    TC.NOM, 
+    TC.LBL_EMAIL
+HAVING 
+    SUM(TCOM.MONTANT) > 300;
+
+-- Question 9: Affichez les informations sur les commandes (cd_commande, montant, email) pour les clients 
+-- qui ont voyagé uniquement entre Paris et Marseille.
+
+SELECT 
+    TCOM.CD_COMMANDE, 
+    TCOM.MONTANT, 
+    TC.LBL_EMAIL
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_VILLE AS TV ON TCOM.CD_VOYAGE = TV.CD_VOYAGE
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+WHERE 
+    (TV.VILLE_ORIGINE = 'PARIS' AND TV.VILLE_DESTINATAIRE = 'MARSEILLE')
+    OR (TV.VILLE_ORIGINE = 'MARSEILLE' AND TV.VILLE_DESTINATAIRE = 'PARIS');
+
+-- Question 10: Affichez le nom, l'email, et la date de voyage des clients ayant effectué un voyage dans les 6 derniers mois.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    TCOM.DATE_VOYAGE
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+WHERE 
+    TCOM.DATE_VOYAGE >= ADD_MONTHS(SYSDATE, -6);
+
+-- Question 11: Affichez les informations (nom, email) des clients qui n'ont jamais effectué de commande.
+
+SELECT 
+    NOM, 
+    LBL_EMAIL
+FROM 
+    HR.TD_TRAIN_CLIENT
+WHERE 
+    CD_EMAIL NOT IN (SELECT CD_EMAIL FROM HR.TF_TRAIN_COMMANDE);
+
+
+-- Question 12: Trouvez les trajets les plus populaires (les trajets les plus effectués) et affichez-les avec leur nombre d'occurrences.
+
+SELECT 
+    TV.VILLE_ORIGINE, 
+    TV.VILLE_DESTINATAIRE, 
+    COUNT(TCOM.CD_COMMANDE) AS nb_commandes
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_VILLE AS TV ON TCOM.CD_VOYAGE = TV.CD_VOYAGE
+GROUP BY 
+    TV.VILLE_ORIGINE, 
+    TV.VILLE_DESTINATAIRE
+ORDER BY 
+    nb_commandes DESC;
+
+
+-- Question 13: Mettez à jour le montant de la commande en ajoutant une remise de 10 % pour tous les clients ayant une carte de fidélité premium.
+
+UPDATE 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+SET 
+    TCOM.MONTANT = TCOM.MONTANT * 0.9
+WHERE 
+    TCOM.CD_CARTE IN (
+        SELECT CD_CARTE 
+        FROM HR.TD_TRAIN_CARTE 
+        WHERE TYPE_CARTE = 'Premium'
+    );
+
+-- Question 14: Supprimez toutes les commandes annulées avant une certaine date (par exemple, avant le 1er janvier 2023).
+
+DELETE FROM 
+    HR.TF_TRAIN_COMMANDE
+WHERE 
+    DATE_ANNULATION < TO_DATE('2023-01-01', 'YYYY-MM-DD');
+
+
+-- Question 15: Pour chaque client, affichez son nom, son email et le montant total de ses commandes ainsi que le rang de chaque commande en fonction de la date de commande (par client).
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    TCOM.MONTANT, 
+    RANK() OVER (PARTITION BY TC.CD_EMAIL ORDER BY TCOM.DATE_COMMANDE) AS rang_commande
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL;
+
+
+-- Question 16: Affichez les informations (nom, email) des clients qui ont dépensé plus que la moyenne des montants de commandes de tous les clients.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TF_TRAIN_COMMANDE AS TCOM ON TC.CD_EMAIL = TCOM.CD_EMAIL
+GROUP BY 
+    TC.NOM, 
+    TC.LBL_EMAIL
+HAVING 
+    SUM(TCOM.MONTANT) > (SELECT AVG(MONTANT) FROM HR.TF_TRAIN_COMMANDE);
+
+
+-- Question 17:Affichez les noms et emails des clients qui ont dépensé plus de 100 euros dans une seule commande.
+
+SELECT TC.NOM, TC.LBL_EMAIL
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+WHERE TCOM.MONTANT > 100;
+
+
+-- Question 18: Affichez les commandes effectuées après le 1er juin 2023.
+
+SELECT CD_COMMANDE, DATE_COMMANDE
+FROM HR.TF_TRAIN_COMMANDE
+WHERE DATE_COMMANDE > '2023-06-01';
+
+-- Question 19:Affichez les trajets entre Paris et Lyon effectués par des clients ayant un email se terminant par @gmail.com.
+
+SELECT TC.NOM, TC.LBL_EMAIL, V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE (V.VILLE_ORIGINE = 'PARIS' AND V.VILLE_DESTINATAIRE = 'LYON')
+  AND TC.LBL_EMAIL LIKE '%@gmail.com';
+
+-- Question 20:Affichez les clients qui n'ont effectué aucune commande depuis le 1er janvier 2024.
+
+SELECT TC.NOM, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    WHERE TCOM.CD_EMAIL = TC.CD_EMAIL
+    AND TCOM.DATE_COMMANDE >= '2024-01-01'
+);
+
+-- Question 21:Affichez les commandes dont le montant est compris entre 50 et 150 euros.
+
+SELECT CD_COMMANDE, MONTANT
+FROM HR.TF_TRAIN_COMMANDE
+WHERE MONTANT BETWEEN 50 AND 150;
+
+-- Question 22:Affichez les clients ayant un prénom commençant par "J" et ayant effectué au moins une commande.
+
+SELECT TC.NOM, TC.PRENOM, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC
+WHERE TC.PRENOM LIKE 'J%'
+  AND EXISTS (
+    SELECT 1
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    WHERE TCOM.CD_EMAIL = TC.CD_EMAIL
+);
+
+-- Question 23:Affichez les types de cartes utilisées par les clients pour les voyages entre Bordeaux et Toulouse.
+
+SELECT DISTINCT TCA.DESC_CARTE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE (V.VILLE_ORIGINE = 'BORDEAUX' AND V.VILLE_DESTINATAIRE = 'TOULOUSE')
+   OR (V.VILLE_ORIGINE = 'TOULOUSE' AND V.VILLE_DESTINATAIRE = 'BORDEAUX');
+
+-- Question 24:Affichez la liste des villes de départ et d'arrivée des trajets effectués par des clients avec une carte de fidélité.
+
+SELECT DISTINCT V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE TCA.TYPE_CARTE = 'FIDELITE';
+
+-- Question 25:Affichez les commandes annulées entre le 1er janvier 2023 et le 1er juin 2023.
+
+SELECT CD_COMMANDE, DATE_COMMANDE, MONTANT
+FROM HR.TF_TRAIN_COMMANDE
+WHERE STATUS = 'ANNULEE'
+  AND DATE_COMMANDE BETWEEN '2023-01-01' AND '2023-06-01';
+
+-- Question 26:Affichez tous les clients qui ont utilisé plus d'une carte de fidélité.
+
+SELECT TC.NOM, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC
+JOIN HR.TF_TRAIN_COMMANDE AS TCOM ON TC.CD_EMAIL = TCOM.CD_EMAIL
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE TCA.TYPE_CARTE = 'FIDELITE'
+GROUP BY TC.NOM, TC.LBL_EMAIL
+HAVING COUNT(DISTINCT TCOM.CD_CARTE) > 1;
+
+-- Question 27:Affichez le montant total dépensé par chaque client.
+
+SELECT TC.NOM, TC.LBL_EMAIL, SUM(TCOM.MONTANT) AS TOTAL_DEPENSE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY TC.NOM, TC.LBL_EMAIL;
+
+-- Question 28:Affichez la moyenne des montants de commandes pour chaque client.
+
+SELECT TC.NOM, TC.LBL_EMAIL, AVG(TCOM.MONTANT) AS MOYENNE_MONTANT
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY TC.NOM, TC.LBL_EMAIL;
+
+-- Question 29:Affichez les clients ayant effectué plus de 5 commandes.
+
+SELECT TC.NOM, TC.LBL_EMAIL
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY TC.NOM, TC.LBL_EMAIL
+HAVING COUNT(TCOM.CD_COMMANDE) > 5;
+
+-- Question 30:Affichez le nombre total de trajets effectués entre Paris et Marseille.
+
+SELECT COUNT(*) AS TOTAL_TRAJETS
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE (V.VILLE_ORIGINE = 'PARIS' AND V.VILLE_DESTINATAIRE = 'MARSEILLE')
+   OR (V.VILLE_ORIGINE = 'MARSEILLE' AND V.VILLE_DESTINATAIRE = 'PARIS');
+
+-- Question 31:Affichez la commande la plus récente pour chaque client.
+
+SELECT TC.NOM, TC.LBL_EMAIL, MAX(TCOM.DATE_COMMANDE) AS DERNIERE_COMMANDE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY TC.NOM, TC.LBL_EMAIL;
+
+-- Question 32:Affichez la somme des montants dépensés par chaque client pour des voyages entre Lyon et Nice.
+
+SELECT TC.NOM, TC.LBL_EMAIL, SUM(TCOM.MONTANT) AS TOTAL_DEPENSE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE (V.VILLE_ORIGINE = 'LYON' AND V.VILLE_DESTINATAIRE = 'NICE')
+   OR (V.VILLE_ORIGINE = 'NICE' AND V.VILLE_DESTINATAIRE = 'LYON')
+GROUP BY TC.NOM, TC.LBL_EMAIL;
+
+-- Question 33:Affichez les clients dont le montant total des commandes dépasse la moyenne des commandes.
+
+WITH TotalCommandes AS (
+    SELECT TC.NOM, TC.LBL_EMAIL, SUM(TCOM.MONTANT) AS TOTAL_DEPENSE
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+    GROUP BY TC.NOM, TC.LBL_EMAIL
+),
+MoyenneCommandes AS (
+    SELECT AVG(MONTANT) AS MOYENNE_MONTANT
+    FROM HR.TF_TRAIN_COMMANDE
+)
+SELECT T.NOM, T.LBL_EMAIL
+FROM TotalCommandes AS T, MoyenneCommandes AS M
+WHERE T.TOTAL_DEPENSE > M.MOYENNE_MONTANT;
+
+
+-- Question 34:Affichez le montant total des commandes annulées pour chaque client.
+
+SELECT TC.NOM, TC.LBL_EMAIL, SUM(TCOM.MONTANT) AS TOTAL_ANNULE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+WHERE TCOM.STATUS = 'ANNULEE'
+GROUP BY TC.NOM, TC.LBL_EMAIL;
+
+-- Question 35:Affichez la moyenne des montants de commandes pour chaque ville de départ.
+
+SELECT V.VILLE_ORIGINE, AVG(TCOM.MONTANT) AS MOYENNE_MONTANT
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+GROUP BY V.VILLE_ORIGINE;
+
+-- Question 36:Affichez le client ayant effectué le plus de trajets.
+
+SELECT TC.NOM, TC.LBL_EMAIL, COUNT(TCOM.CD_VOYAGE) AS NOMBRE_TRAJETS
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY TC.NOM, TC.LBL_EMAIL
+ORDER BY NOMBRE_TRAJETS DESC
+LIMIT 1;
+
+-- Question 37:Affichez les clients qui ont effectué un trajet que personne d'autre n'a effectué.
+
+SELECT DISTINCT TC.NOM, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC
+WHERE EXISTS (
+    SELECT 1
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+    WHERE TCOM.CD_EMAIL = TC.CD_EMAIL
+    AND NOT EXISTS (
+        SELECT 1
+        FROM HR.TF_TRAIN_COMMANDE AS TCOM2
+        WHERE TCOM2.CD_VOYAGE = TCOM.CD_VOYAGE
+        AND TCOM2.CD_EMAIL <> TC.CD_EMAIL
+    )
+);
+
+-- Question 38:Affichez les commandes dont le montant est supérieur à la moyenne des commandes.
+
+SELECT CD_COMMANDE, MONTANT
+FROM HR.TF_TRAIN_COMMANDE
+WHERE MONTANT > (SELECT AVG(MONTANT) FROM HR.TF_TRAIN_COMMANDE);
+
+-- Question 39:Affichez les clients qui ont dépensé plus que la somme totale des commandes du client "Dupont".
+
+WITH TotalDupont AS (
+    SELECT SUM(MONTANT) AS TOTAL_DUPONT
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+    WHERE TC.NOM = 'Dupont'
+)
+SELECT TC.NOM, TC.LBL_EMAIL, SUM(TCOM.MONTANT) AS TOTAL_DEPENSE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+GROUP BY TC.NOM, TC.LBL_EMAIL
+HAVING SUM(TCOM.MONTANT) > (SELECT TOTAL_DUPONT FROM TotalDupont);
+
+-- Question 40:Affichez les villes de départ pour lesquelles il y a au moins 10 trajets.
+
+SELECT V.VILLE_ORIGINE, COUNT(*) AS NOMBRE_TRAJETS
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+GROUP BY V.VILLE_ORIGINE
+HAVING COUNT(*) >= 10;
+
+-- Question 41:Affichez les clients ayant dépensé plus de 500 euros pour des trajets entre Paris et Toulouse.
+
+SELECT TC.NOM, TC.LBL_EMAIL, SUM(TCOM.MONTANT) AS TOTAL_DEPENSE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE (V.VILLE_ORIGINE = 'PARIS' AND V.VILLE_DESTINATAIRE = 'TOULOUSE')
+   OR (V.VILLE_ORIGINE = 'TOULOUSE' AND V.VILLE_DESTINATAIRE = 'PARIS')
+GROUP BY TC.NOM, TC.LBL_EMAIL
+HAVING SUM(TCOM.MONTANT) > 500;
+
+-- Question 42:Affichez les villes de départ et d'arrivée pour lesquelles la distance moyenne des trajets est supérieure à la distance moyenne globale des trajets.
+
+WITH MoyenneGlobale AS (
+    SELECT AVG(V.DISTANCE) AS MOYENNE_DISTANCE
+    FROM HR.TD_TRAIN_VILLE AS V
+)
+SELECT V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE, AVG(V.DISTANCE) AS MOYENNE_TRAJET
+FROM HR.TD_TRAIN_VILLE AS V
+GROUP BY V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE
+HAVING AVG(V.DISTANCE) > (SELECT MOYENNE_DISTANCE FROM MoyenneGlobale);
+
+-- Question 43:Affichez les commandes dont le montant est supérieur au montant maximum dépensé pour une commande annulée.
+
+SELECT CD_COMMANDE, MONTANT
+FROM HR.TF_TRAIN_COMMANDE
+WHERE MONTANT > (SELECT MAX(MONTANT) FROM HR.TF_TRAIN_COMMANDE WHERE STATUS = 'ANNULEE');
+
+-- Question 44:Affichez les trajets effectués uniquement par les clients ayant plus de deux cartes de fidélité.
+
+SELECT V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE TC.CD_EMAIL IN (
+    SELECT CD_EMAIL
+    FROM HR.TF_TRAIN_COMMANDE
+    WHERE CD_CARTE IN (SELECT CD_CARTE FROM HR.TD_TRAIN_CARTE WHERE TYPE_CARTE = 'FIDELITE')
+    GROUP BY CD_EMAIL
+    HAVING COUNT(DISTINCT CD_CARTE) > 2
+);
+
+-- Question 45:Affichez les commandes effectuées après la date de la commande la plus récente de "Jean Martin".
+
+SELECT CD_COMMANDE, DATE_COMMANDE, MONTANT
+FROM HR.TF_TRAIN_COMMANDE
+WHERE DATE_COMMANDE > (
+    SELECT MAX(DATE_COMMANDE)
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+    WHERE TC.NOM = 'Martin' AND TC.PRENOM = 'Jean'
+);
+
+-- Question 46:Affichez les clients qui n'ont effectué que des trajets en première classe.
+
+SELECT TC.NOM, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM HR.TF_TRAIN_COMMANDE AS TCOM
+    WHERE TCOM.CD_EMAIL = TC.CD_EMAIL
+    AND TCOM.CLASSE != 'PREMIERE'
+);
+
+-- Question 47:Affichez les noms et adresses email des clients ayant effectué un trajet entre Paris et Bordeaux, ainsi que le montant de leur commande.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCOM.MONTANT
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE (V.VILLE_ORIGINE = 'PARIS' AND V.VILLE_DESTINATAIRE = 'BORDEAUX')
+   OR (V.VILLE_ORIGINE = 'BORDEAUX' AND V.VILLE_DESTINATAIRE = 'PARIS');
+
+-- Question 48:Affichez les types de cartes utilisées par les clients ayant dépensé plus de 200 euros dans une commande.
+
+SELECT DISTINCT TCA.DESC_CARTE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE TCOM.MONTANT > 200;
+
+-- Question 49:Affichez les noms des clients et les villes d'origine et de destination des trajets qu'ils ont effectués.
+
+SELECT TC.NOM, V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE;
+
+-- Question 50:Affichez les types de trains utilisés pour les trajets entre Lyon et Marseille.
+
+SELECT DISTINCT TT.TYPE_TRAIN
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TYPE_TRAIN AS TT ON TCOM.CD_TRAIN = TT.CD_TRAIN
+WHERE (V.VILLE_ORIGINE = 'LYON' AND V.VILLE_DESTINATAIRE = 'MARSEILLE')
+   OR (V.VILLE_ORIGINE = 'MARSEILLE' AND V.VILLE_DESTINATAIRE = 'LYON');
+
+-- Question 51:Affichez le nom, l'email et le type de carte des clients ayant effectué des trajets entre Paris et Lyon avec une carte Premium.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCA.DESC_CARTE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE (V.VILLE_ORIGINE = 'PARIS' AND V.VILLE_DESTINATAIRE = 'LYON')
+   OR (V.VILLE_ORIGINE = 'LYON' AND V.VILLE_DESTINATAIRE = 'PARIS')
+AND TCA.TYPE_CARTE = 'PREMIUM';
+
+-- Question 52:Affichez les informations des trajets et des clients ayant utilisé une carte de fidélité et ayant dépensé plus de 100 euros pour un trajet.
+
+SELECT TC.NOM, TC.LBL_EMAIL, V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE, TCOM.MONTANT
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE TCA.TYPE_CARTE = 'FIDELITE' AND TCOM.MONTANT > 100;
+
+-- Question 53:Affichez les noms des clients ayant effectué plus de 2 trajets avec un même type de carte.
+
+SELECT TC.NOM, TCA.DESC_CARTE, COUNT(*) AS NOMBRE_TRAJETS
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+GROUP BY TC.NOM, TCA.DESC_CARTE
+HAVING COUNT(*) > 2;
+
+-- Question 54:Affichez les clients ayant utilisé plusieurs types de cartes pour des trajets entre Paris et Lyon.
+
+SELECT TC.NOM, COUNT(DISTINCT TCA.TYPE_CARTE) AS NOMBRE_CARTES
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+WHERE (V.VILLE_ORIGINE = 'PARIS' AND V.VILLE_DESTINATAIRE = 'LYON')
+   OR (V.VILLE_ORIGINE = 'LYON' AND V.VILLE_DESTINATAIRE = 'PARIS')
+GROUP BY TC.NOM
+HAVING COUNT(DISTINCT TCA.TYPE_CARTE) > 1;
+
+-- Question 55:Affichez les trajets effectués par les clients ayant utilisé des cartes Premium et ayant dépensé plus de 150 euros.
+
+SELECT V.VILLE_ORIGINE, V.VILLE_DESTINATAIRE, TCOM.MONTANT
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TRAIN_CARTE AS TCA ON TCOM.CD_CARTE = TCA.CD_CARTE
+WHERE TCA.TYPE_CARTE = 'PREMIUM' AND TCOM.MONTANT > 150;
+
+-- Question 56:Affichez les types de trains utilisés par les clients ayant effectué un trajet entre Marseille et Toulouse.
+
+SELECT DISTINCT TT.TYPE_TRAIN
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS V ON TCOM.CD_VOYAGE = V.CD_VOYAGE
+JOIN HR.TD_TYPE_TRAIN AS TT ON TCOM.CD_TRAIN = TT.CD_TRAIN
+WHERE (V.VILLE_ORIGINE = 'MARSEILLE' AND V.VILLE_DESTINATAIRE = 'TOULOUSE')
+   OR (V.VILLE_ORIGINE = 'TOULOUSE' AND V.VILLE_DESTINATAIRE = 'MARSEILLE');
+
+-- Question 57:Affichez les commandes de chaque client en les classant par date de commande.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCOM.DATE_COMMANDE, TCOM.MONTANT,
+       ROW_NUMBER() OVER (PARTITION BY TC.CD_EMAIL ORDER BY TCOM.DATE_COMMANDE) AS RANG_COMMANDE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL;
+
+-- Question 58:Affichez le total des montants dépensés cumulés par chaque client pour ses trajets.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCOM.DATE_COMMANDE, TCOM.MONTANT,
+       SUM(TCOM.MONTANT) OVER (PARTITION BY TC.CD_EMAIL ORDER BY TCOM.DATE_COMMANDE) AS TOTAL_CUMULE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL;
+
+-- Question 59:Affichez la commande la plus chère pour chaque client et le rang de chaque commande en fonction du montant dépensé.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCOM.CD_COMMANDE, TCOM.MONTANT,
+       RANK() OVER (PARTITION BY TC.CD_EMAIL ORDER BY TCOM.MONTANT DESC) AS RANG_MONTANT
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL;
+
+-- Question 60:Affichez le nombre cumulatif de commandes pour chaque client par date de commande.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCOM.DATE_COMMANDE,
+       COUNT(TCOM.CD_COMMANDE) OVER (PARTITION BY TC.CD_EMAIL ORDER BY TCOM.DATE_COMMANDE) AS NOMBRE_CUMULATIF_COMMANDES
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL;
+
+-- Question 61:Affichez les commandes de chaque client avec une somme cumulée des montants de commandes, classée par date de commande.
+
+SELECT TC.NOM, TC.LBL_EMAIL, TCOM.DATE_COMMANDE, TCOM.MONTANT,
+       SUM(TCOM.MONTANT) OVER (PARTITION BY TC.CD_EMAIL ORDER BY TCOM.DATE_COMMANDE) AS SOMME_CUMULEE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL;
+
+-- Question 62:Affichez les clients dont l'adresse email contient "yahoo".
+
+SELECT TC.NOM, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC
+WHERE TC.LBL_EMAIL LIKE '%yahoo%';
+
+-- Question 63:Affichez les 5 premiers caractères des noms des clients.
+
+SELECT SUBSTRING(TC.NOM, 1, 5) AS NOM_REDUIT, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC;
+
+-- Question 64:Affichez les noms des clients en majuscules.
+
+SELECT UPPER(TC.NOM) AS NOM_MAJUSCULE, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC;
+
+-- Question 65:Affichez les prénoms des clients en inversant les lettres (par exemple, "Jean" devient "naeJ").
+
+SELECT REVERSE(TC.PRENOM) AS PRENOM_INVERSE, TC.LBL_EMAIL
+FROM HR.TD_TRAIN_CLIENT AS TC;
+
+-- Question 66:Affichez les adresses email des clients en remplaçant les points "." par des tirets "-".
+
+SELECT REPLACE(TC.LBL_EMAIL, '.', '-') AS EMAIL_MODIFIE
+FROM HR.TD_TRAIN_CLIENT AS TC;
+
+-- Question 67:Affichez le nombre total de commandes par mois pour l'année en cours.
+
+SELECT 
+    EXTRACT(MONTH FROM DATE_COMMANDE) AS Mois,
+    COUNT(*) AS Nombre_Commandes
+FROM 
+    HR.TF_TRAIN_COMMANDE
+WHERE 
+    EXTRACT(YEAR FROM DATE_COMMANDE) = EXTRACT(YEAR FROM CURRENT_DATE)
+GROUP BY 
+    Mois
+ORDER BY 
+    Mois;
+
+-- Question 68:Affichez la tendance des montants dépensés par trimestre.
+
+SELECT 
+    EXTRACT(QUARTER FROM DATE_COMMANDE) AS Trimestre,
+    SUM(MONTANT) AS Montant_Total
+FROM 
+    HR.TF_TRAIN_COMMANDE
+GROUP BY 
+    Trimestre
+ORDER BY 
+    Trimestre;
+
+-- Question 69:Affichez les clients qui n'ont effectué que des trajets aller simple (sans retour).
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TF_TRAIN_COMMANDE AS TCOM ON TC.CD_EMAIL = TCOM.CD_EMAIL
+WHERE 
+    TCOM.TYPE_TRAJET = 'Aller'
+GROUP BY 
+    TC.NOM, TC.LBL_EMAIL
+HAVING 
+    COUNT(CASE WHEN TCOM.TYPE_TRAJET = 'Retour' THEN 1 END) = 0;
+
+-- Question 70:Affichez les clients qui ont effectué des trajets en groupe (plus de 5 personnes).
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TF_TRAIN_COMMANDE AS TCOM ON TC.CD_EMAIL = TCOM.CD_EMAIL
+WHERE 
+    TCOM.NB_PERSONNES > 5
+GROUP BY 
+    TC.NOM, TC.LBL_EMAIL;
+
+-- Question 71:Affichez les commandes qui ont été modifiées (changement de date, montant, etc.) et 
+-- les raisons de ces modifications.
+
+SELECT 
+    CD_COMMANDE, 
+    DATE_MODIFICATION, 
+    RAISON_MODIFICATION
+FROM 
+    HR.TF_TRAIN_COMMANDE_MODIFIEE
+WHERE 
+    DATE_MODIFICATION IS NOT NULL;
+
+-- Question 72:Affichez les commandes qui ont été effectuées par des clients ayant un nom de famille spécifique.
+
+SELECT 
+    TCOM.CD_COMMANDE, 
+    TC.NOM, 
+    TC.LBL_EMAIL
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+WHERE 
+    TC.NOM = 'Dupont'; -- Remplacez 'Dupont' par le nom de famille spécifique
+
+-- Question 73:Affichez les trajets avec la distance la plus courte et la plus longue.
+
+SELECT 
+    VILLE_ORIGINE, 
+    VILLE_DESTINATAIRE, 
+    DISTANCE
+FROM 
+    HR.TD_TRAIN_VOYAGE
+WHERE 
+    DISTANCE = (SELECT MIN(DISTANCE) FROM HR.TD_TRAIN_VOYAGE)
+    OR DISTANCE = (SELECT MAX(DISTANCE) FROM HR.TD_TRAIN_VOYAGE);
+
+-- Question 74:Calculez la distance totale parcourue par chaque client.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    SUM(TV.DISTANCE) AS Distance_Totale
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TF_TRAIN_COMMANDE AS TCOM ON TC.CD_EMAIL = TCOM.CD_EMAIL
+JOIN 
+    HR.TD_TRAIN_VOYAGE AS TV ON TCOM.CD_VOYAGE = TV.CD_VOYAGE
+GROUP BY 
+    TC.NOM, TC.LBL_EMAIL;
+
+-- Question 75:Affichez les clients ayant la carte de fidélité la plus ancienne.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    MIN(TC.DATE_DEBUT_FIDELITE) AS Date_Carte
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TD_CARTE_FIDELITE AS TCF ON TC.CD_CLIENT = TCF.CD_CLIENT
+GROUP BY 
+    TC.NOM, TC.LBL_EMAIL
+HAVING 
+    MIN(TC.DATE_DEBUT_FIDELITE) = (SELECT MIN(DATE_DEBUT_FIDELITE) FROM HR.TD_CARTE_FIDELITE);
+
+-- Question 76:Affichez les cartes de fidélité qui ont été utilisées au moins une fois.
+
+SELECT 
+    TCF.CD_CARTE, 
+    TCF.LBL_CARTE
+FROM 
+    HR.TD_CARTE_FIDELITE AS TCF
+JOIN 
+    HR.TF_TRAIN_COMMANDE AS TCOM ON TCF.CD_CARTE = TCOM.CD_CARTE
+GROUP BY 
+    TCF.CD_CARTE, TCF.LBL_CARTE;
+
+-- Question 77:Affichez les clients ayant bénéficié d'une promotion et leur montant total dépensé.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    SUM(TCOM.MONTANT) AS Montant_Total
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TF_TRAIN_COMMANDE AS TCOM ON TC.CD_EMAIL = TCOM.CD_EMAIL
+WHERE 
+    TCOM.PROMOTION_APPLIQUEE = TRUE
+GROUP BY 
+    TC.NOM, TC.LBL_EMAIL;
+
+-- Question 78:Affichez les trajets réservés avec des réductions spéciales.
+
+SELECT 
+    TCOM.CD_COMMANDE, 
+    TC.NOM, 
+    TCOM.MONTANT
+FROM 
+    HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN 
+    HR.TD_TRAIN_CLIENT AS TC ON TCOM.CD_EMAIL = TC.CD_EMAIL
+WHERE 
+    TCOM.REDUCTION_SPECIALE IS NOT NULL;
+
+-- Question 79:Affichez les avis des clients pour les trajets effectués.
+
+SELECT 
+    TC.NOM, 
+    TC.LBL_EMAIL, 
+    TAVIS.AVIS
+FROM 
+    HR.TD_TRAIN_CLIENT AS TC
+JOIN 
+    HR.TD_AVIS AS TAVIS ON TC.CD_CLIENT = TAVIS.CD_CLIENT
+WHERE 
+    TAVIS.CD_COMMANDE IS NOT NULL;
+
+-- Question 80:Calculez le taux de satisfaction moyen des clients par type de carte.
+
+SELECT 
+    TCF.LBL_CARTE, 
+    AVG(TAVIS.NOTE) AS Taux_Satisfaction
+FROM 
+    HR.TD_CARTE_FIDELITE AS TCF
+JOIN 
+    HR.TD_AVIS AS TAVIS ON TCF.CD_CLIENT = TAVIS.CD_CLIENT
+GROUP BY 
+    TCF.LBL_CARTE;
+
+-- Question 81:Comparez le montant total des commandes effectuées par les clients en première classe par rapport à ceux en seconde classe.
+
+SELECT 
+    TYPE_CLASSE, 
+    SUM(MONTANT) AS Montant_Total
+FROM 
+    HR.TF_TRAIN_COMMANDE
+GROUP BY 
+    TYPE_CLASSE;
+
+-- Question 82:Comparez le nombre de trajets effectués entre deux villes spécifiques.
+
+SELECT 
+    COUNT(*) AS Nombre_Trajets
+FROM 
+    HR.TD_TRAIN_VOYAGE
+WHERE 
+    (VILLE_ORIGINE = 'Paris' AND VILLE_DESTINATAIRE = 'Lyon')
+    OR (VILLE_ORIGINE = 'Lyon' AND VILLE_DESTINATAIRE = 'Paris');
+
+-- Question 83:Affichez les clients pour lesquels certaines informations (email, numéro de téléphone) sont manquantes.
+
+SELECT 
+    NOM, 
+    LBL_EMAIL
+FROM 
+    HR.TD_TRAIN_CLIENT
+WHERE 
+    LBL_EMAIL IS NULL OR NUMERO_TELEPHONE IS NULL;
+
+-- Question 84:Affichez les trajets pour lesquels la date ou le montant est manquant.
+
+SELECT 
+    CD_COMMANDE, 
+    DATE_VOYAGE, 
+    MONTANT
+FROM 
+    HR.TF_TRAIN_COMMANDE
+WHERE 
+    DATE_VOYAGE IS NULL OR MONTANT IS NULL;
+
+-- Question 85:Identifiez les requêtes qui prennent le plus de temps à s'exécuter et proposez des optimisations.
+
+-- Cela nécessiterait l'analyse des performances de la base de données
+-- Utilisez l'outil d'analyse de requêtes de votre SGBD (comme EXPLAIN)
+
+-- Question 86:Analysez la structure des tables pour voir si des index supplémentaires pourraient améliorer les performances.
+
+-- Cela dépend de votre SGBD et de ses outils
+-- Par exemple, dans PostgreSQL : 
+SELECT 
+    * 
+FROM 
+    pg_indexes 
+WHERE 
+    tablename = 'TF_TRAIN_COMMANDE';
+
+-- Question 87:
+-- Question 88:
+-- Question 89:
+-- Question 90:
+-- Question 91:
+-- Question 92:
+-- Question 93:
+-- Question 94:
+-- Question 95:
+-- Question 96:
+-- Question 97:
+-- Question 98:
+-- Question 99:
+-- Question 100:
+-- Question 101:
+-- Question 102:
+-- Question 103:
+-- Question 104:
+-- Question 105:
+-- Question 106:
+-- Question 107:
+-- Question 108:
+-- Question 109:
+-- Question 110:
+-- Question 111:
+-- Question 112:
+-- Question 113:
+-- Question 114:
+-- Question 115:
+-- Question 116:
+-- Question 117:
+-- Question 118:
+-- Question 119:
+-- Question 120:
+-- Question 121:
+-- Question 122:
+-- Question 123:
