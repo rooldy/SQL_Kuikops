@@ -67,6 +67,19 @@ CREATE TABLE HR.TF_TRAIN_COMMANDE(
 );
 
 
+-- Modifier la colonne CD_EMAIL pour être un VARCHAR
+ALTER TABLE HR.TD_TRAIN_CLIENT
+ALTER COLUMN CD_EMAIL TYPE VARCHAR(100);
+
+-- Ajouter une colonne pour le type de carte de fidélité (si pertinent)
+ALTER TABLE HR.TD_TRAIN_CLIENT
+ADD COLUMN CD_CARTE_FIDELITE VARCHAR(5) REFERENCES HR.TD_TRAIN_CARTE(CD_CARTE);
+
+-- Ajouter des colonnes pour stocker la latitude et la longitude dans TD_TRAIN_VILLE
+ALTER TABLE HR.TD_TRAIN_VILLE
+ADD COLUMN LATITUDE DECIMAL(9,6),
+ADD COLUMN LONGITUDE DECIMAL(9,6);
+
 
  -- DDL for Table TD_TRAIN_CARTE
 --------------------------------------------------------
@@ -1078,40 +1091,607 @@ FROM
 WHERE 
     tablename = 'TF_TRAIN_COMMANDE';
 
--- Question 87:
--- Question 88:
--- Question 89:
--- Question 90:
--- Question 91:
--- Question 92:
--- Question 93:
--- Question 94:
--- Question 95:
--- Question 96:
--- Question 97:
--- Question 98:
--- Question 99:
--- Question 100:
--- Question 101:
--- Question 102:
--- Question 103:
--- Question 104:
--- Question 105:
--- Question 106:
--- Question 107:
--- Question 108:
--- Question 109:
--- Question 110:
--- Question 111:
--- Question 112:
--- Question 113:
--- Question 114:
--- Question 115:
--- Question 116:
--- Question 117:
--- Question 118:
--- Question 119:
--- Question 120:
--- Question 121:
--- Question 122:
--- Question 123:
+-- Question 87:Affichez les clients qui ont effectué au moins une commande avec chaque type de train disponible.
+
+SELECT CD_EMAIL
+FROM HR.TF_TRAIN_COMMANDE
+GROUP BY CD_EMAIL
+HAVING COUNT(DISTINCT CD_TRAIN) = (SELECT COUNT(*) FROM HR.TD_TYPE_TRAIN);
+
+-- Question 88:Affichez les trajets effectués par des clients qui ont utilisé au moins deux cartes différentes pour payer leurs commandes.
+
+SELECT CD_EMAIL, CD_VOYAGE, COUNT(DISTINCT CD_CARTE) AS NOMBRE_CARTES
+FROM HR.TF_TRAIN_COMMANDE
+GROUP BY CD_EMAIL, CD_VOYAGE
+HAVING COUNT(DISTINCT CD_CARTE) >= 2;
+
+-- Question 89:Sélectionnez les clients dont la somme totale des montants des commandes est supérieure au montant total dépensé par au moins 90 % des autres clients.
+
+SELECT CD_EMAIL
+FROM HR.TF_TRAIN_COMMANDE
+GROUP BY CD_EMAIL
+HAVING SUM(MONTANT) > (
+    SELECT PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY SUM(MONTANT)) 
+    FROM HR.TF_TRAIN_COMMANDE 
+    GROUP BY CD_EMAIL
+);
+
+-- Question 90:Affichez les clients qui ont effectué un trajet entre des villes différentes, mais avec le même montant pour deux trajets distincts.
+
+SELECT A.CD_EMAIL
+FROM HR.TF_TRAIN_COMMANDE AS A
+JOIN HR.TF_TRAIN_COMMANDE AS B 
+ON A.CD_EMAIL = B.CD_EMAIL 
+AND A.CD_VOYAGE != B.CD_VOYAGE
+AND A.MONTANT = B.MONTANT;
+
+-- Question 91:Affichez les clients ayant effectué des trajets qui représentent au moins 20 % du total des trajets pour une ville donnée.
+
+SELECT CD_EMAIL, CD_VOYAGE, COUNT(*) AS NB_TRAJETS, 
+COUNT(*) * 100.0 / (SELECT COUNT(*) FROM HR.TF_TRAIN_COMMANDE) AS POURCENTAGE
+FROM HR.TF_TRAIN_COMMANDE
+GROUP BY CD_EMAIL, CD_VOYAGE
+HAVING COUNT(*) * 100.0 / (SELECT COUNT(*) FROM HR.TF_TRAIN_COMMANDE) >= 20;
+
+-- Question 92:Créez un index pour améliorer les performances des requêtes concernant les trajets entre Paris et Lyon.
+
+CREATE INDEX idx_voyage_paris_lyon 
+ON HR.TD_TRAIN_VILLE (VILLE_ORIGINE, VILLE_DESTINATION);
+
+-- Question 93:Analysez l'impact des vues matérialisées sur une requête calculant le montant total dépensé par chaque client pour des trajets sur l'année 2023.
+
+CREATE MATERIALIZED VIEW mv_total_montant_2023 AS
+SELECT CD_EMAIL, SUM(MONTANT) AS TOTAL_DEPENSE
+FROM HR.TF_TRAIN_COMMANDE
+WHERE YEAR(DATE_VOYAGE) = 2023
+GROUP BY CD_EMAIL;
+
+-- Question 94:Proposez un plan de partitionnement pour une table avec beaucoup de données, comme TF_TRAIN_COMMANDE.
+-- Partitionner la table TF_TRAIN_COMMANDE par année via la colonne DATE_VOYAGE :
+
+CREATE TABLE TF_TRAIN_COMMANDE (
+    -- Définition des colonnes
+)
+PARTITION BY RANGE (DATE_VOYAGE) (
+    PARTITION p_2022 VALUES LESS THAN (TO_DATE('2023-01-01', 'YYYY-MM-DD')),
+    PARTITION p_2023 VALUES LESS THAN (TO_DATE('2024-01-01', 'YYYY-MM-DD')),
+    -- Autres partitions
+);
+
+-- Question 95:Écrivez une transaction qui met à jour le montant des commandes si un client obtient un remboursement partiel.
+
+BEGIN TRANSACTION;
+UPDATE HR.TF_TRAIN_COMMANDE
+SET MONTANT = MONTANT - 20
+WHERE CD_COMMANDE = 12345;
+
+-- Assurer la cohérence des données
+IF @@ERROR != 0 
+BEGIN
+   ROLLBACK TRANSACTION;
+END
+ELSE
+BEGIN
+   COMMIT TRANSACTION;
+END;
+
+-- Question 96:Affichez les commandes qui ont été modifiées ou annulées lors d'une transaction concurrente.
+
+SELECT CD_COMMANDE, MONTANT, STATUT
+FROM HR.TF_TRAIN_COMMANDE
+WHERE STATUT IN ('MODIFIE', 'ANNULE')
+AND DATE_MODIFICATION > DATE_COMMANDE;
+
+-- Question 97:Simulez une situation où deux transactions tentent de mettre à jour simultanément le même enregistrement.
+
+-- Transaction 1
+BEGIN TRANSACTION;
+UPDATE HR.TF_TRAIN_COMMANDE
+SET MONTANT = MONTANT + 50
+WHERE CD_COMMANDE = 12345;
+
+-- Transaction 2 (provoque un deadlock)
+BEGIN TRANSACTION;
+UPDATE HR.TF_TRAIN_COMMANDE
+SET MONTANT = MONTANT - 50
+WHERE CD_COMMANDE = 12345;
+
+-- Pour résoudre un deadlock :
+SET DEADLOCK_PRIORITY LOW; -- Permet à une transaction de "perdre" le deadlock
+
+-- Question 98:Affichez les clients ayant réservé des trajets pour des dates futures, en les classant par la date de leur réservation.
+
+SELECT CD_EMAIL, DATE_VOYAGE
+FROM HR.TF_TRAIN_COMMANDE
+WHERE DATE_VOYAGE > CURRENT_DATE
+ORDER BY DATE_VOYAGE ASC;
+
+-- Question 99:Calculez l'écart moyen (en jours) entre la date de commande et la date de voyage pour tous les trajets effectués par un client.
+
+SELECT CD_EMAIL, AVG(DATEDIFF(DAY, DATE_COMMANDE, DATE_VOYAGE)) AS ECART_MOYEN
+FROM HR.TF_TRAIN_COMMANDE
+GROUP BY CD_EMAIL;
+
+-- Question 100:Affichez la liste des clients ayant annulé des commandes dans les 24 heures suivant leur réservation.
+
+SELECT CD_EMAIL
+FROM HR.TF_TRAIN_COMMANDE
+WHERE STATUT = 'ANNULE'
+AND DATEDIFF(HOUR, DATE_COMMANDE, DATE_ANNULATION) <= 24;
+
+-- Question 101:Affichez les trajets effectués par des clients sur des distances supérieures à 500 km.
+
+SELECT CD_EMAIL, CD_VOYAGE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS TV ON TCOM.CD_VOYAGE = TV.CD_VOYAGE
+WHERE TV.DISTANCE_KM > 500;
+
+-- Question 102:Calculez la distance totale parcourue par chaque client pour tous ses trajets.
+
+SELECT CD_EMAIL, SUM(DISTANCE_KM) AS DISTANCE_TOTALE
+FROM HR.TF_TRAIN_COMMANDE AS TCOM
+JOIN HR.TD_TRAIN_VILLE AS TV ON TCOM.CD_VOYAGE = TV.CD_VOYAGE
+GROUP BY CD_EMAIL;
+
+-- Question 103:Créez une requête pour suivre les commandes en temps réel avec les dernières mises à jour.
+
+SELECT CD_COMMANDE, STATUT, DATE_MODIFICATION
+FROM HR.TF_TRAIN_COMMANDE
+WHERE DATE_MODIFICATION > CURRENT_TIMESTAMP - INTERVAL '1 MINUTE';
+
+-- Question 104:Simulez un tableau de bord récapitulant le nombre de commandes par minute.
+
+SELECT DATE_TRUNC('minute', DATE_COMMANDE) AS MINUTE, COUNT(*) AS NB_COMMANDES
+FROM HR.TF_TRAIN_COMMANDE
+WHERE DATE_COMMANDE >= CURRENT_TIMESTAMP - INTERVAL '1 HOUR'
+GROUP BY DATE_TRUNC('minute', DATE_COMMANDE);
+
+-- Question 105:Affichez les clients qui ont réservé au moins un trajet avec chaque type de carte de fidélité.
+
+SELECT C.ID_CLIENT
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN CARTES_FIDELITE CF ON CM.ID_CARTE = CF.ID_CARTE
+GROUP BY C.ID_CLIENT
+HAVING COUNT(DISTINCT CF.TYPE_CARTE) = (SELECT COUNT(DISTINCT TYPE_CARTE) FROM CARTES_FIDELITE);
+
+-- Question 106:Sélectionnez les villes qui ont été visitées par plus de 50 % des clients inscrits dans la base de données.
+
+SELECT VILLE_DESTINATION
+FROM TRAJETS
+GROUP BY VILLE_DESTINATION
+HAVING COUNT(DISTINCT ID_CLIENT) > (SELECT COUNT(*) FROM CLIENTS) / 2;
+
+-- Question 107:Affichez les clients qui ont dépensé plus de 1000 euros cumulés uniquement dans des trajets effectués les jours fériés.
+
+SELECT C.ID_CLIENT
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+WHERE T.DATE_TRAJET IN (SELECT DATE_FERIEE FROM JOURS_FERIES)
+GROUP BY C.ID_CLIENT
+HAVING SUM(CM.MONTANT) > 1000;
+
+-- Question 108:Affichez les clients qui n'ont utilisé qu'une seule carte pour tous leurs trajets.
+
+SELECT C.ID_CLIENT
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+GROUP BY C.ID_CLIENT
+HAVING COUNT(DISTINCT CM.ID_CARTE) = 1;
+
+-- Question 109:Affichez les clients qui ont un total de commandes supérieur au montant moyen de commandes de tous les clients combinés.
+
+SELECT C.ID_CLIENT, SUM(CM.MONTANT) AS TOTAL_COMMANDE
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+GROUP BY C.ID_CLIENT
+HAVING SUM(CM.MONTANT) > (SELECT AVG(TOTAL_COMMANDE) 
+                          FROM (SELECT SUM(MONTANT) AS TOTAL_COMMANDE
+                                FROM COMMANDES
+                                GROUP BY ID_CLIENT) AS TOTAL_PAR_CLIENT);
+
+-- Question 110:Proposez un plan d'indexation pour les colonnes les plus fréquemment utilisées dans les requêtes concernant les trajets entre Paris et Bordeaux.
+
+CREATE INDEX idx_trajets_villes
+ON TRAJETS (VILLE_ORIGINE, VILLE_DESTINATION);
+
+-- Question 111:Créez un plan d'exécution pour analyser la performance d'une requête récupérant toutes les commandes de l'année précédente. 
+-- Identifiez les goulets d'étranglement et proposez des optimisations.
+
+EXPLAIN ANALYZE
+SELECT *
+FROM COMMANDES
+WHERE EXTRACT(YEAR FROM DATE_COMMANDE) = EXTRACT(YEAR FROM NOW()) - 1;
+
+-- Question 112:Analysez le comportement d'une requête avec et sans un index sur la colonne "CD_COMMANDE" dans la table des commandes.
+-- Pour mesurer la performance avec un index, vous pouvez d'abord créer l'index :
+CREATE INDEX idx_cd_commande
+ON COMMANDES (CD_COMMANDE);
+
+-- Ensuite, vous pouvez utiliser EXPLAIN ANALYZE pour voir les performances :
+EXPLAIN ANALYZE
+SELECT *
+FROM COMMANDES
+WHERE CD_COMMANDE = 'SOME_CODE';
+
+-- Question 113:Implémentez un index composite sur les colonnes "VILLE_ORIGINE" et "VILLE_DESTINATION" dans la table des trajets, 
+-- et évaluez son impact sur les requêtes filtrant sur ces colonnes.
+
+CREATE INDEX idx_villes
+ON TRAJETS (VILLE_ORIGINE, VILLE_DESTINATION);
+
+-- Ensuite, évaluez l'impact avec EXPLAIN ANALYZE :
+EXPLAIN ANALYZE
+SELECT *
+FROM TRAJETS
+WHERE VILLE_ORIGINE = 'Paris' AND VILLE_DESTINATION = 'Lyon';
+
+-- Question 114:Écrivez une requête optimisée pour récupérer tous les trajets annulés par des clients ayant dépensé plus de 500 euros.
+
+SELECT T.ID_TRAJET, T.VILLE_ORIGINE, T.VILLE_DESTINATION, CM.MONTANT
+FROM TRAJETS T
+JOIN COMMANDES CM ON T.ID_TRAJET = CM.ID_TRAJET
+JOIN CLIENTS C ON CM.ID_CLIENT = C.ID_CLIENT
+WHERE T.STATUS = 'annulé'
+AND C.ID_CLIENT IN (SELECT ID_CLIENT
+                    FROM COMMANDES
+                    GROUP BY ID_CLIENT
+                    HAVING SUM(MONTANT) > 500);
+
+-- Question 115:Écrivez une transaction qui ajoute un montant de pénalité à toutes les commandes annulées, 
+-- tout en assurant l'intégrité des données même en cas d'erreur.
+
+BEGIN TRANSACTION;
+
+UPDATE COMMANDES
+SET MONTANT = MONTANT + 20
+WHERE STATUS = 'annulé';
+
+COMMIT;
+
+-- Si une erreur survient, la transaction pourra être annulée avec :
+ROLLBACK;
+
+-- Question 116:Affichez les clients qui ont effectué des modifications sur une commande pendant qu'une autre transaction 
+-- était en cours (verrouillage d'enregistrement).
+
+-- Première transaction (Transaction A) :
+BEGIN;
+
+SELECT * FROM COMMANDES
+WHERE ID_COMMANDE = '12345'
+FOR UPDATE;
+
+-- Deuxième transaction (Transaction B) — tentant de modifier la même commande :
+BEGIN;
+
+UPDATE COMMANDES
+SET MONTANT = MONTANT + 10
+WHERE ID_COMMANDE = '12345';
+
+-- Question 117:Simulez une situation où plusieurs clients tentent de réserver le dernier billet disponible pour un trajet 
+-- et montrez comment prévenir la sur-réservation avec des transactions SQL.
+
+-- Commencez une transaction et vérifiez la disponibilité du billet :
+BEGIN;
+
+SELECT NOMBRE_BILLETS
+FROM TRAJETS
+WHERE ID_TRAJET = '123'
+FOR UPDATE;
+
+-- Si des billets sont disponibles, effectuez la réservation :
+IF NOMBRE_BILLETS > 0 THEN
+    UPDATE TRAJETS
+    SET NOMBRE_BILLETS = NOMBRE_BILLETS - 1
+    WHERE ID_TRAJET = '123';
+    
+    INSERT INTO COMMANDES (ID_CLIENT, ID_TRAJET, MONTANT)
+    VALUES ('1', '123', 100);
+    
+    COMMIT;
+ELSE
+    ROLLBACK;
+END IF;
+
+-- Question 118:Créez une requête qui détecte et résout les conflits de transaction pour des clients essayant de mettre à jour leurs commandes simultanément.
+
+-- Bloquer une mise à jour jusqu'à ce que l'autre soit terminée :
+BEGIN;
+
+SELECT * FROM COMMANDES
+WHERE ID_COMMANDE = '12345'
+FOR UPDATE NOWAIT;
+
+-- Si un conflit est détecté, la transaction peut être annulée ou mise en attente.
+
+-- Question 119:Écrivez une requête qui détecte les tentatives d'annulation de commande dans une transaction concurrente.
+
+-- Première transaction : verrouiller la commande.
+BEGIN;
+
+SELECT * FROM COMMANDES
+WHERE ID_COMMANDE = '12345'
+FOR UPDATE;
+
+-- Deuxième transaction : tenter d'annuler la même commande.
+UPDATE COMMANDES
+SET STATUS = 'annulé'
+WHERE ID_COMMANDE = '12345';
+
+-- Question 120:Affichez les clients qui réservent systématiquement leurs trajets plus de 30 jours avant la date de départ.
+
+SELECT C.ID_CLIENT
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+GROUP BY C.ID_CLIENT
+HAVING COUNT(CASE WHEN T.DATE_TRAJET - CM.DATE_COMMANDE > 30 THEN 1 END) = COUNT(*);
+
+-- Question 121:Calculez l'écart moyen (en jours) entre la réservation et l'annulation pour les trajets annulés.
+
+SELECT AVG(DATE_PART('day', DATE_ANNULATION - DATE_COMMANDE)) AS ECART_MOYEN
+FROM COMMANDES
+WHERE STATUS = 'annulé';
+
+-- Question 122:Affichez les commandes où la différence entre la date de réservation et la date de voyage dépasse la moyenne pour tous les clients.
+
+WITH ECART_MOYEN AS (
+  SELECT AVG(DATE_PART('day', T.DATE_TRAJET - CM.DATE_COMMANDE)) AS MOYENNE_ECART
+  FROM COMMANDES CM
+  JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+)
+SELECT CM.*
+FROM COMMANDES CM
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+JOIN ECART_MOYEN EM ON TRUE
+WHERE DATE_PART('day', T.DATE_TRAJET - CM.DATE_COMMANDE) > EM.MOYENNE_ECART;
+
+-- Question 123:Affichez les clients ayant annulé leurs trajets dans les 48 heures précédant le départ, classés par la date d'annulation.
+
+SELECT C.ID_CLIENT, CM.ID_COMMANDE, CM.DATE_ANNULATION
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+WHERE CM.STATUS = 'annulé'
+AND DATE_PART('day', T.DATE_TRAJET - CM.DATE_ANNULATION) <= 2
+ORDER BY CM.DATE_ANNULATION ASC;
+
+-- Question 124:Affichez les trajets annulés où la période entre la réservation et l'annulation dépasse 90 jours.
+
+SELECT T.*
+FROM TRAJETS T
+JOIN COMMANDES CM ON T.ID_TRAJET = CM.ID_TRAJET
+WHERE CM.STATUS = 'annulé'
+AND DATE_PART('day', CM.DATE_ANNULATION - CM.DATE_COMMANDE) > 90;
+
+-- Question 125:Affichez le nombre total de trajets pour chaque client et calculez leur part de marché (pourcentage) par rapport à l'ensemble des trajets effectués.
+
+WITH TOTAL_TRAJETS AS (
+  SELECT COUNT(*) AS TOTAL
+  FROM TRAJETS
+)
+SELECT C.ID_CLIENT, COUNT(T.ID_TRAJET) AS TOTAL_TRAJETS_CLIENT, 
+       (COUNT(T.ID_TRAJET) * 100.0 / (SELECT TOTAL FROM TOTAL_TRAJETS)) AS PART_DE_MARCHE
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+GROUP BY C.ID_CLIENT;
+
+-- Question 126:Affichez les clients ayant effectué les trois trajets les plus chers par date de commande, classés par montant.
+
+SELECT C.ID_CLIENT, CM.ID_COMMANDE, CM.MONTANT
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+ORDER BY CM.MONTANT DESC
+LIMIT 3;
+
+-- Question 127:Calculez la somme des montants dépensés par chaque client, ainsi que leur rang par rapport aux autres clients (du plus élevé au plus faible).
+
+SELECT C.ID_CLIENT, SUM(CM.MONTANT) AS TOTAL_DEPENSE, RANK() OVER (ORDER BY SUM(CM.MONTANT) DESC) AS RANG
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+GROUP BY C.ID_CLIENT
+ORDER BY TOTAL_DEPENSE DESC;
+
+-- Question 128:Affichez les trajets avec le montant de commande le plus élevé pour chaque client, ainsi que leur classement par rapport aux autres trajets du même client.
+
+WITH MAX_TRAJETS_CLIENT AS (
+  SELECT C.ID_CLIENT, MAX(CM.MONTANT) AS MAX_MONTANT
+  FROM CLIENTS C
+  JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+  GROUP BY C.ID_CLIENT
+)
+SELECT C.ID_CLIENT, CM.ID_COMMANDE, CM.MONTANT, 
+       RANK() OVER (PARTITION BY C.ID_CLIENT ORDER BY CM.MONTANT DESC) AS RANG
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN MAX_TRAJETS_CLIENT MTC ON C.ID_CLIENT = MTC.ID_CLIENT AND CM.MONTANT = MTC.MAX_MONTANT;
+
+-- Question 129:Calculez le montant total dépensé par chaque client pour les trajets effectués au cours des trois dernières années, avec un classement cumulatif.
+
+SELECT C.ID_CLIENT, SUM(CM.MONTANT) AS TOTAL_DEPENSE, 
+       RANK() OVER (ORDER BY SUM(CM.MONTANT) DESC) AS RANG
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+WHERE T.DATE_TRAJET >= CURRENT_DATE - INTERVAL '3 years'
+GROUP BY C.ID_CLIENT
+ORDER BY TOTAL_DEPENSE DESC;
+
+-- Question 130:Affichez les trajets qui couvrent une distance inférieure à la médiane de toutes les distances parcourues entre les différentes villes.
+
+WITH MEDIANE_DISTANCE AS (
+  SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY DISTANCE) AS MEDIANE
+  FROM TRAJETS
+)
+SELECT T.*
+FROM TRAJETS T
+JOIN MEDIANE_DISTANCE MD ON T.DISTANCE < MD.MEDIANE;
+
+-- Question 131:Calculez la distance totale parcourue par chaque client, en incluant à la fois les trajets aller et retour.
+
+SELECT C.ID_CLIENT, SUM(T.DISTANCE * 2) AS DISTANCE_TOTALE
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+GROUP BY C.ID_CLIENT;
+
+-- Question 132:Affichez les trajets qui se situent dans un rayon de 200 km autour d'une ville donnée (utiliser des fonctions géospatiales).
+
+SELECT T.*
+FROM TRAJETS T
+WHERE ST_Distance(ST_SetSRID(ST_MakePoint(T.LONGITUDE_ORIGINE, T.LATITUDE_ORIGINE), 4326), 
+                  ST_SetSRID(ST_MakePoint(LONGITUDE_VILLE_DONNEE, LATITUDE_VILLE_DONNEE), 4326)) < 200000;
+
+-- Question 133:Calculez la distance moyenne des trajets pour chaque client et identifiez ceux dont la moyenne dépasse 500 km.
+
+SELECT C.ID_CLIENT, AVG(T.DISTANCE) AS DISTANCE_MOYENNE
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+GROUP BY C.ID_CLIENT
+HAVING AVG(T.DISTANCE) > 500;
+
+-- Question 134:Affichez les trajets qui couvrent une distance plus longue que la distance moyenne entre Paris et Lyon.
+
+WITH DISTANCE_PARIS_LYON AS (
+  SELECT AVG(T.DISTANCE) AS DISTANCE_MOYENNE
+  FROM TRAJETS T
+  WHERE T.VILLE_ORIGINE = 'Paris' AND T.VILLE_DESTINATION = 'Lyon'
+)
+SELECT T.*
+FROM TRAJETS T
+JOIN DISTANCE_PARIS_LYON DPL ON T.DISTANCE > DPL.DISTANCE_MOYENNE;
+
+-- Question 135:Créez une requête qui affiche en temps réel le nombre de trajets réservés au cours des dernières 24 heures.
+
+SELECT COUNT(*) AS NOMBRE_TRAJETS
+FROM COMMANDES CM
+JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+WHERE CM.DATE_COMMANDE >= NOW() - INTERVAL '24 hours';
+
+-- Question 136:Simulez un flux de commandes en temps réel et affichez le montant cumulé des commandes toutes les 5 minutes.
+
+SELECT DATE_TRUNC('minute', CM.DATE_COMMANDE) AS PERIODE, 
+       SUM(CM.MONTANT) AS MONTANT_CUMULE
+FROM COMMANDES CM
+GROUP BY DATE_TRUNC('minute', CM.DATE_COMMANDE)
+ORDER BY PERIODE;
+
+-- Question 137:Créez une vue matérialisée pour résumer les trajets et les montants dépensés pour chaque ville de départ et de destination sur l'année en cours.
+
+CREATE MATERIALIZED VIEW VUE_TRAJETS_MONTANTS AS
+SELECT T.VILLE_ORIGINE, T.VILLE_DESTINATION, SUM(CM.MONTANT) AS MONTANT_TOTAL, COUNT(*) AS NOMBRE_TRAJETS
+FROM TRAJETS T
+JOIN COMMANDES CM ON T.ID_TRAJET = CM.ID_TRAJET
+WHERE EXTRACT(YEAR FROM T.DATE_TRAJET) = EXTRACT(YEAR FROM CURRENT_DATE)
+GROUP BY T.VILLE_ORIGINE, T.VILLE_DESTINATION;
+
+-- Question 138:Affichez les commandes reçues et annulées dans les 24 dernières heures, avec un indicateur visuel de leur statut (ex : ✅ pour les commandes reçues, ❌ pour les commandes annulées).
+
+SELECT CM.ID_COMMANDE, CM.STATUS, 
+       CASE WHEN CM.STATUS = 'reçue' THEN '✅' 
+            WHEN CM.STATUS = 'annulé' THEN '❌'
+       END AS INDICATEUR_STATUS
+FROM COMMANDES CM
+WHERE CM.DATE_COMMANDE >= NOW() - INTERVAL '24 hours';
+
+-- Question 139:Simulez un flux de nouvelles commandes et affichez une analyse en temps réel de la répartition des commandes par type de train.
+
+SELECT T.TYPE_TRAIN, COUNT(*) AS NOMBRE_COMMANDES
+FROM TRAINS T
+JOIN TRAJETS TJ ON T.ID_TRAIN = TJ.ID_TRAIN
+JOIN COMMANDES CM ON TJ.ID_TRAJET = CM.ID_TRAJET
+WHERE CM.DATE_COMMANDE >= NOW() - INTERVAL '1 hour'
+GROUP BY T.TYPE_TRAIN;
+
+-- Question 140:Affichez les clients dont le montant total des commandes dépasse 200 % de la moyenne des montants de commandes de tous les clients.
+
+WITH MOYENNE_COMMANDES AS (
+  SELECT AVG(SUM_CM.MONTANT_TOTAL) * 2 AS SEUIL
+  FROM (SELECT SUM(CM.MONTANT) AS MONTANT_TOTAL 
+        FROM COMMANDES CM 
+        GROUP BY CM.ID_CLIENT) SUM_CM
+)
+SELECT C.ID_CLIENT, SUM(CM.MONTANT) AS TOTAL_DEPENSE
+FROM CLIENTS C
+JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+GROUP BY C.ID_CLIENT
+HAVING SUM(CM.MONTANT) > (SELECT SEUIL FROM MOYENNE_COMMANDES);
+
+-- Question 141:Affichez les trajets qui représentent plus de 30 % du total des trajets effectués sur une ville donnée.
+
+WITH TOTAL_TRAJETS_VILLE AS (
+  SELECT VILLE_DESTINATION, COUNT(*) AS TOTAL_TRAJETS
+  FROM TRAJETS
+  GROUP BY VILLE_DESTINATION
+)
+SELECT T.*
+FROM TRAJETS T
+JOIN TOTAL_TRAJETS_VILLE TTV ON T.VILLE_DESTINATION = TTV.VILLE_DESTINATION
+WHERE (SELECT COUNT(*) FROM TRAJETS WHERE VILLE_DESTINATION = T.VILLE_DESTINATION) > 0.3 * TTV.TOTAL_TRAJETS;
+
+-- Question 142:Affichez les villes pour lesquelles la somme des montants de commandes dépasse 50 % du montant total dépensé pour tous les trajets.
+
+WITH TOTAL_MONTANTS AS (
+  SELECT SUM(CM.MONTANT) AS MONTANT_TOTAL
+  FROM COMMANDES CM
+)
+SELECT T.VILLE_DESTINATION, SUM(CM.MONTANT) AS MONTANT_PAR_VILLE
+FROM TRAJETS T
+JOIN COMMANDES CM ON T.ID_TRAJET = CM.ID_TRAJET
+GROUP BY T.VILLE_DESTINATION
+HAVING SUM(CM.MONTANT) > 0.5 * (SELECT MONTANT_TOTAL FROM TOTAL_MONTANTS);
+
+-- Question 143: Calculez le taux d'annulation pour chaque type de trajet (ex. : business, standard) au cours des 6 derniers mois.
+
+SELECT T.TYPE_TRAJET, 
+       COUNT(CASE WHEN CM.STATUS = 'annulé' THEN 1 END) * 100.0 / COUNT(*) AS TAUX_ANNULATION
+FROM TRAJETS T
+JOIN COMMANDES CM ON T.ID_TRAJET = CM.ID_TRAJET
+WHERE CM.DATE_COMMANDE >= NOW() - INTERVAL '6 months'
+GROUP BY T.TYPE_TRAJET;
+
+-- Question 144:Affichez les clients qui ont effectué des trajets représentant plus de 10 % du montant total des trajets pour l'année 2023.
+
+WITH TOTAL_MONTANT_TRAJETS AS (
+    SELECT SUM(CM.MONTANT) AS MONTANT_TOTAL
+    FROM COMMANDES CM
+    JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+    WHERE EXTRACT(YEAR FROM T.DATE_TRAJET) = 2023
+),
+CLIENT_MONTANTS AS (
+    SELECT C.ID_CLIENT, SUM(CM.MONTANT) AS MONTANT_CLIENT
+    FROM CLIENTS C
+    JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+    JOIN TRAJETS T ON CM.ID_TRAJET = T.ID_TRAJET
+    WHERE EXTRACT(YEAR FROM T.DATE_TRAJET) = 2023
+    GROUP BY C.ID_CLIENT
+)
+SELECT CM.ID_CLIENT
+FROM CLIENT_MONTANTS CM, TOTAL_MONTANT_TRAJETS TMT
+WHERE CM.MONTANT_CLIENT > 0.1 * TMT.MONTANT_TOTAL;
+
+-- Question 145:Affichez les trajets effectués par des clients dont les commandes totales dépassent 90 % du total dépensé par tous les autres clients.
+
+WITH TOTAL_DEPENSES AS (
+    SELECT SUM(CM.MONTANT) AS TOTAL
+    FROM COMMANDES CM
+),
+CLIENT_DEPENSES AS (
+    SELECT C.ID_CLIENT, SUM(CM.MONTANT) AS DEPENSE_CLIENT
+    FROM CLIENTS C
+    JOIN COMMANDES CM ON C.ID_CLIENT = CM.ID_CLIENT
+    GROUP BY C.ID_CLIENT
+),
+CLIENTS_90P AS (
+    SELECT CD.ID_CLIENT
+    FROM CLIENT_DEPENSES CD, TOTAL_DEPENSES TD
+    WHERE CD.DEPENSE_CLIENT > 0.9 * (TD.TOTAL - CD.DEPENSE_CLIENT)
+)
+SELECT T.*
+FROM TRAJETS T
+JOIN COMMANDES CM ON T.ID_TRAJET = CM.ID_TRAJET
+JOIN CLIENTS_90P CP ON CM.ID_CLIENT = CP.ID_CLIENT;
